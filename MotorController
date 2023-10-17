@@ -1,0 +1,46 @@
+const int IN1_A = 5, IN2_A = 6, EN_A = 3;
+const int buttonCW = 9, buttonCCW = 10;
+
+void setup() {
+  pinMode(EN_A, OUTPUT);
+  pinMode(IN1_A, OUTPUT);
+  pinMode(IN2_A, OUTPUT);
+  pinMode(buttonCW, INPUT_PULLUP);
+  pinMode(buttonCCW, INPUT_PULLUP);
+}
+
+void loop() {
+  if (digitalRead(buttonCW) == LOW) {  // Button for CW pressed
+    moveMotorCW();
+    // Debounce delay
+
+  }
+  
+  if (digitalRead(buttonCCW) == LOW) {  // Button for CCW pressed
+    moveMotorCCW();
+    // Debounce delay
+
+  }
+}
+
+void moveMotorCW() {
+  // Turn motor on in one direction for 100 milliseconds
+  digitalWrite(IN1_A, HIGH);
+  digitalWrite(IN2_A, LOW);
+  analogWrite(EN_A, 255);
+  delay(10);
+
+  // Stop the motor
+  analogWrite(EN_A, 0);
+}
+
+void moveMotorCCW() {
+  // Change motor direction for 100 milliseconds
+  digitalWrite(IN1_A, LOW);
+  digitalWrite(IN2_A, HIGH);
+  analogWrite(EN_A, 255);
+  delay(10);
+
+  // Stop the motor
+  analogWrite(EN_A, 0);
+}
