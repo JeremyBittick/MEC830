@@ -1,0 +1,58 @@
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+const int sampleSize = 20;
+float angleSamples[sampleSize];
+int sampleIndex = 0;
+float totalAngle = 0;
+
+void setup() {
+  Wire.begin();
+  Serial.begin(115200);
+
+  mpu.initialize();
+
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 connected successfully");
+  } else {
+    Serial.println("MPU6050 connection failed, check your connections");
+  }
+
+  // Initialize angleSamples array
+  for (int i = 0; i < sampleSize; i++) {
+    angleSamples[i] = 0;
+  }
+}
+
+void loop() {
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  // Convert accelerometer data to g's
+  float accelY = ay / 16384.0;
+
+  // Constrain the accelerometer data to avoid NaN in asin function
+  accelY = constrain(accelY, -1.0, 1.0);
+
+  // Compute angle about y-axis (assuming the module is stationary)
+  float angleY = asin(accelY) * (180.0 / PI);
+
+  // Update total angle sum
+  totalAngle -= angleSamples[sampleIndex];
+  totalAngle += angleY;
+
+  // Replace the old angle with the new angle in the samples array
+  angleSamples[sampleIndex] = angleY;
+
+  // Move to the next index in the samples array
+  sampleIndex = (sampleIndex + 1) % sampleSize;
+
+  // Compute the average angle
+  float averageAngleY = totalAngle / sampleSize;
+
+  //Serial.print("Smoothed angle about y-axis: ");
+  Serial.println(averageAngleY);
+  delay(50);
+}
