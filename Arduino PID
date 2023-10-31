@@ -1,0 +1,48 @@
+#include <Arduino.h>
+
+const int enA = 3;
+const int in1 = 5;
+const int in2 = 6;
+float theta;  // Variable to hold the theta value from the gyro
+float setPoint = 0.0;  // The desired theta value (center)
+
+// PID parameters
+float Kp = 1.0;
+float Ki = 0.0;
+float Kd = 0.0;
+float prevError = 0;
+float integral = 0;
+
+void setup() {
+  pinMode(enA, OUTPUT);
+  pinMode(in1, OUTPUT);
+  pinMode(in2, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  // Read theta from serial if available
+  if (Serial.available() > 0) {
+    theta = Serial.parseFloat();  // Assuming theta is being sent as a float
+  }
+
+  // PID calculations
+  float error = setPoint - theta;
+  integral += error;
+  float derivative = error - prevError;
+  float output = Kp * error + Ki * integral + Kd * derivative;
+  prevError = error;
+
+  // Map PID output to motor control
+  int motorOutput = map(abs(output), 0, 255, 0, 255); 
+
+  // Motor control
+  if (output > 0) {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  } else {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  }
+  analogWrite(enA, motorOutput);
+}
