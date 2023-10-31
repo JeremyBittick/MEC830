@@ -1,0 +1,63 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <Servo.h>
+
+MPU6050 mpu;
+Servo motor1;
+Servo motor2;
+
+void setup() {
+  Wire.begin();
+  mpu.initialize();
+  motor1.attach(5);
+  motor2.attach(6);
+
+  // Initialize Serial for debugging
+  Serial.begin(9600);
+
+  // Initialize ESCs with min throttle
+  motor1.writeMicroseconds(1000);
+  motor2.writeMicroseconds(1000);
+  delay(10000);  // Wait for 10 seconds
+  
+  Serial.println("Setup complete");
+}
+
+void loop() {
+  int16_t ax, ay, az;
+  int16_t gx, gy, gz;
+  
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  float angle = atan2(ay, az);
+  angle = angle * (180.0 / PI);  // Convert radians to degrees
+  
+  Serial.print("Angle: ");
+  Serial.println(angle);
+
+  int controlSignal = int(angle * 10);  // Simplified control signal calculation
+  
+  // Ensure controlSignal is within a range that maps to 1000-1200 microseconds
+  controlSignal = constrain(controlSignal, -255, 255);
+  
+  // Map control signal to effective throttle range (1000-1200)
+  int throttleCommand = map(controlSignal, -255, 255, 1000, 1200);
+  
+  // Further constrain throttle command to ensure it does not exceed 1200 microseconds
+  throttleCommand = constrain(throttleCommand, 1000, 1200);
+  
+  Serial.print("Throttle Command: ");
+  Serial.println(throttleCommand);
+
+  // Send the throttle command to both motors
+  if (controlSignal > 0) {
+    motor1.writeMicroseconds(map(throttleCommand, 1000, 1200, 1000, 1500));
+    // No command for motor2 when controlSignal > 0
+  } else {
+    // No command for motor1 when controlSignal < 0
+    motor2.writeMicroseconds(map(throttleCommand, 1000, 1200, 1500, 1000));
+  }
+
+  // Short delay before the next loop iteration
+  delay(10);
+}
