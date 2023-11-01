@@ -2,23 +2,40 @@
 #include <MPU6050.h>
 #include <Servo.h>
 
+#define MPU6050_address 0x68  // Assuming the MPU6050 is at address 0x68
+#define CONFIG_register 0x1A
+
 MPU6050 mpu;
 Servo motor1;
 Servo motor2;
+
+// PID gains
+const float Kp = 1;
+const float Ki = 0;
+const float Kd = 0;
+
+float previousError = 0;
+float integral = 0;
 
 void setup() {
   Wire.begin();
   mpu.initialize();
   motor1.attach(5);
   motor2.attach(6);
+  
+  // Example: Set DLPF to 5Hz bandwidth
 
-  // Initialize Serial for debugging
   Serial.begin(9600);
 
-  // Initialize ESCs with min throttle
   motor1.writeMicroseconds(1000);
   motor2.writeMicroseconds(1000);
-  delay(10000);  // Wait for 10 seconds
+  // Set DLPF
+  Wire.beginTransmission(MPU6050_address);
+  Wire.write(CONFIG_register);
+  Wire.write(0x06);  // Set DLPF to 5Hz bandwidth (assuming gyro config bits are 0)
+  Wire.endTransmission(true);
+  
+  delay(10000);
   
   Serial.println("Setup complete");
 }
@@ -30,34 +47,36 @@ void loop() {
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
   float angle = atan2(ay, az);
-  angle = angle * (180.0 / PI);  // Convert radians to degrees
+  angle = angle * (180.0 / PI);
   
-  Serial.print("Angle: ");
-  Serial.println(angle);
-
-  int controlSignal = int(angle * 10);  // Simplified control signal calculation
+  float error = angle;  // assuming you want to control to 0 degrees
+  integral += error;
+  float derivative = error - previousError;
   
-  // Ensure controlSignal is within a range that maps to 1000-1200 microseconds
+  int controlSignal = Kp*error + Ki*integral + Kd*derivative;
+  
   controlSignal = constrain(controlSignal, -255, 255);
   
-  // Map control signal to effective throttle range (1000-1200)
-  int throttleCommand = map(controlSignal, -255, 255, 1000, 1200);
+  int throttleCommand1 = map(controlSignal, -255, 255, 1000, 1300);
+  int throttleCommand2 = map(controlSignal, -255, 255, 1300, 1000);  // Extended throttle range
+  throttleCommand1 = constrain(throttleCommand1, 1000, 1300);
+  throttleCommand2 = constrain(throttleCommand2, 1000, 1300);
   
-  // Further constrain throttle command to ensure it does not exceed 1200 microseconds
-  throttleCommand = constrain(throttleCommand, 1000, 1200);
-  
-  Serial.print("Throttle Command: ");
-  Serial.println(throttleCommand);
-
-  // Send the throttle command to both motors
   if (controlSignal > 0) {
-    motor1.writeMicroseconds(map(throttleCommand, 1000, 1200, 1000, 1500));
-    // No command for motor2 when controlSignal > 0
+    
+  motor1.writeMicroseconds(throttleCommand1);
   } else {
-    // No command for motor1 when controlSignal < 0
-    motor2.writeMicroseconds(map(throttleCommand, 1000, 1200, 1500, 1000));
+    motor2.writeMicroseconds(throttleCommand2);;
   }
 
-  // Short delay before the next loop iteration
-  delay(10);
+  // Added serial print statements for plotting
+  Serial.print(angle);
+  Serial.print(",");
+  Serial.print(motor1.readMicroseconds());
+  Serial.print(",");
+  Serial.println(motor2.readMicroseconds());
+  
+  previousError = error;
+  
+  delay(1);
 }
