@@ -1,0 +1,123 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <Servo.h>
+#include <float.h> 
+
+MPU6050 mpu;
+Servo motor1;
+Servo motor2;
+
+float Kp = 3;
+float Ki = 0;
+float Kd = .02;
+
+float previousError = 0;
+float integral = 0;
+
+volatile float counter = 0;
+float encoderZeroPoint = 0;
+
+// Define min and max microsecond variables
+int min_us = 1050;
+int max_us = 1550;
+
+void setup() {
+  Wire.begin();
+  mpu.initialize();
+  
+  motor1.attach(5);
+  motor2.attach(6);
+
+  Serial.begin(9600);
+
+  pinMode(2, INPUT_PULLUP); 
+  pinMode(3, INPUT_PULLUP); 
+  
+  attachInterrupt(0, ai0, RISING);
+  attachInterrupt(1, ai1, RISING);
+
+  // Calibration procedure
+  Serial.println("Calibration: Perform a full sweep of motion, then send 'Y' when ready.");
+
+  float minEncoderValue = FLT_MAX;
+  float maxEncoderValue = -FLT_MAX;
+  
+  while (true) {
+    if (Serial.available() > 0) {
+      char input = Serial.read();
+      if (input == 'Y' || input == 'y') {
+        break;
+      }
+    }
+
+    float currentEncoderValue = counter;
+    minEncoderValue = min(minEncoderValue, currentEncoderValue);
+    maxEncoderValue = max(maxEncoderValue, currentEncoderValue);
+  }
+
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  float mpuAngle = atan2(ay, az) * (180.0 / PI);
+  
+  // Assuming the encoder zero point is at the midpoint of the min and max encoder values
+  encoderZeroPoint = (minEncoderValue + maxEncoderValue) / 2;
+  // Mapping the midpoint to the current MPU6050 angle
+  counter = mpuAngle * (600 / 360.0) - encoderZeroPoint;
+
+  // Print mapping information
+  Serial.print("Min Encoder Value: "); Serial.println(minEncoderValue);
+  Serial.print("Max Encoder Value: "); Serial.println(maxEncoderValue);
+  Serial.print("MPU6050 Angle: "); Serial.println(mpuAngle);
+  Serial.print("Encoder Zero Point: "); Serial.println(encoderZeroPoint);
+  Serial.print("Setpoint Angle on Encoder: "); Serial.println((counter - encoderZeroPoint) / (600 / 360.0));
+
+  motor1.writeMicroseconds(1050);
+  motor2.writeMicroseconds(1050);
+  delay(10000);
+
+  Serial.println("Setup complete");
+}
+
+void loop() {
+  float angle = (counter - encoderZeroPoint) / (600 / 360.0);
+  float error = 0 - angle;
+  
+  integral += error;
+  float derivative = error - previousError;
+
+  float controlSignal = Kp * error + Ki * integral + Kd * derivative;
+  controlSignal = constrain(controlSignal, -650, 650);
+
+  // Use min_us and max_us variables in the map function
+  int throttleCommand = map(abs(controlSignal), 0, 650, min_us, max_us);
+  
+  if (controlSignal > 0) {
+    motor1.writeMicroseconds(throttleCommand);
+  } else {
+    motor2.writeMicroseconds(throttleCommand);
+  }
+  
+  // Print angle and throttle command each loop
+  Serial.print(angle); 
+  Serial.print(","); 
+  Serial.println(throttleCommand);
+
+  previousError = error;
+  
+}
+
+void ai0() {
+  if (digitalRead(3) == LOW) {
+    counter++;
+  } else {
+    counter--;
+  }
+}
+
+void ai1() {
+  if (digitalRead(2) == LOW) {
+    counter--;
+  } else {
+    counter++;
+  }
+}
