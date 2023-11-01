@@ -1,0 +1,115 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <Servo.h>
+#include <float.h> 
+
+MPU6050 mpu;
+Servo motor1;
+Servo motor2;
+
+float Kp = 2;
+float Ki = 0;
+float Kd = 5;
+
+int deadbandCompensation = 10;
+
+float previousError = 0;
+float integral = 0;
+
+volatile float counter = 0;
+float encoderZeroPoint = 0;
+
+// Define min and max microsecond variables
+int min_us = 1100;
+int max_us = 1450;
+
+void setup() {
+  Wire.begin();
+  mpu.initialize();
+  
+  motor1.attach(5);
+  motor2.attach(6);
+
+  Serial.begin(9600);
+
+  pinMode(2, INPUT_PULLUP); 
+  pinMode(3, INPUT_PULLUP); 
+  
+  attachInterrupt(0, ai0, RISING);
+  attachInterrupt(1, ai1, RISING);
+
+  // Prompt user to power on the ESC
+  Serial.println("Power on the ESC, then type '1' to continue.");
+
+  // Wait for user confirmation
+  while (Serial.read() != '1') {
+    unsigned long startTime = millis();
+    while(millis() - startTime < 100);
+  }
+
+  // ESC Calibration
+  motor1.writeMicroseconds(1500);
+  motor2.writeMicroseconds(1500);
+  unsigned long calibrationStartTime1 = millis();
+  while(millis() - calibrationStartTime1 < 2000);
+  
+  motor1.writeMicroseconds(1000);
+  motor2.writeMicroseconds(1000);
+  unsigned long calibrationStartTime2 = millis();
+  while(millis() - calibrationStartTime2 < 2000);
+
+  // Map current MPU6050 angle to encoder zero point
+  int16_t ax, ay, az, gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  float mpuAngle = atan2(ay, az) * (180.0 / PI);
+  encoderZeroPoint = counter - mpuAngle * (600 / 360.0);  // Set encoder zero point to current MPU6050 angle
+  
+  motor1.writeMicroseconds(1050);
+  motor2.writeMicroseconds(1050);
+  
+  Serial.println("Setup complete");
+}
+
+void loop() {
+  float angle = (counter - encoderZeroPoint) / (600 / 360.0);
+  float error = 0 - angle;
+  
+  integral += error;
+  float derivative = error - previousError;
+
+  float controlSignal = Kp * error + Ki * integral + Kd * derivative;
+  controlSignal = constrain(controlSignal, -650, 650);
+
+  // Use min_us and max_us variables in the map function
+  int throttleCommand = map(abs(controlSignal), 0, 650, min_us, max_us);
+  
+  if (controlSignal > 0) {
+    motor2.writeMicroseconds(throttleCommand);
+  } else {
+    motor1.writeMicroseconds(throttleCommand);
+  }
+  
+  // Print angle and throttle command each loop
+  Serial.print(angle); 
+  Serial.print(","); 
+  Serial.println(throttleCommand);
+
+  previousError = error;
+  
+}
+
+void ai0() {
+  if (digitalRead(3) == LOW) {
+    counter++;
+  } else {
+    counter--;
+  }
+}
+
+void ai1() {
+  if (digitalRead(2) == LOW) {
+    counter--;
+  } else {
+    counter++;
+  }
+}
